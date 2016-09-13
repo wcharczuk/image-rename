@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/rwcarlsen/goexif/exif"
+	"github.com/wcharczuk/image-util/lib"
 )
 
 // defaults
@@ -25,7 +26,7 @@ const (
 	DefaultFileInputFilter = ".jpg"
 
 	// DefaultFileOutputPattern is the default output pattern for the file.`
-	DefaultFileOutputPattern = "{DateTime.Year}{DateTime.Month}{DateTime.Day}_{File.Index}.{File.Extension}"
+	DefaultFileOutputPattern = "{DateTime.Year}{DateTime.Month}{DateTime.Day}_{Make}_{File.IndexByCaptureDate}.{File.Extension}"
 )
 
 // flags
@@ -34,7 +35,7 @@ var (
 	flagInputFileFilter   = flag.String("filter", DefaultFileInputFilter, "The input file filter.")
 	flagOutputFilePattern = flag.String("output", DefaultFileOutputPattern, "The file output pattern.")
 	flagRecursive         = flag.Bool("recursive", false, "The filesystem visitor should recurse to sub directories.")
-	flagDryRun            = flag.Bool("dryrun", false, "The print the output, do not rename/move the files.")
+	flagDryRun            = flag.Bool("dryrun", true, "The print the output, do not rename/move the files.")
 )
 
 // fieldTypes
@@ -183,42 +184,8 @@ func FilesInDirectoryWithFilter(directoryPath, fileFilter string) []string {
 	return files
 }
 
-// GetFileTagValue gets a tag value from file metadata.
-func GetFileTagValue(fileIndex int, filePath string, tag, property string) (string, error) {
-	var tagValue string
-	fileMeta, err := os.Stat(filePath)
-	if err != nil {
-		return tagValue, err
-	}
-
-	switch property {
-	case "Index":
-		{
-			return strconv.Itoa(fileIndex), nil
-		}
-	case "Extension":
-		{
-			return strings.Replace(filepath.Ext(fileMeta.Name()), ".", "", -1), nil
-		}
-	case "Size":
-		{
-			return strconv.FormatInt(fileMeta.Size(), 10), nil
-		}
-	case "ModTime":
-		{
-			return TimestampProp(fileMeta.ModTime(), property), nil
-		}
-	case "Name":
-		{
-			return fileMeta.Name(), nil
-		}
-	}
-
-	return tagValue, nil
-}
-
-// GetFileExifMeta returns exif file meta for a given path.
-func GetFileExifMeta(filePath string) (*exif.Exif, error) {
+// GetExifData returns exif file meta for a given path.
+func GetExifData(filePath string) (*exif.Exif, error) {
 	fileContents, err := os.Open(filePath)
 	if err != nil {
 		return nil, err
@@ -227,14 +194,79 @@ func GetFileExifMeta(filePath string) (*exif.Exif, error) {
 	return exif.Decode(fileContents)
 }
 
-// GetExifTagValue gets a tag value from exif metadata.
-func GetExifTagValue(filePath string, tag, property string) (string, error) {
+// ParseTagProperties returns the tag and relevant property.
+func ParseTagProperties(outputTag string) (tag string, properties []string) {
+	if strings.Contains(outputTag, ".") {
+		parts := strings.Split(outputTag, ".")
+		return parts[0], parts[1:]
+	}
+	return outputTag, nil
+}
+
+// ReplaceTagInPattern replaces a given tag in a given pattern.
+func ReplaceTagInPattern(inputPattern, tag, value string) string {
+	return strings.Replace(inputPattern, "{"+tag+"}", value, -1)
+}
+
+// GetFileTagValue gets a tag value from file metadata.
+func GetFileTagValue(collector *lib.DateIndexCollector, fileCaptureTime time.Time, filePath, tag string, properties ...string) (string, error) {
 	var tagValue string
-	fileMeta, err := GetFileExifMeta(filePath)
+	fileMeta, err := os.Stat(filePath)
 	if err != nil {
 		return tagValue, err
 	}
-	exifTag, err := fileMeta.Get(exif.FieldName(tag))
+
+	if len(properties) > 0 {
+		switch properties[0] {
+		case "Index":
+			{
+				return fmt.Sprintf("%06d", collector.Len()), nil
+			}
+		case "IndexByCaptureYear":
+			{
+				fileIndex := collector.GetIndexByYear(fileCaptureTime)
+				return fmt.Sprintf("%06d", fileIndex), nil
+			}
+		case "IndexByCaptureMonth":
+			{
+				fileIndex := collector.GetIndexByMonth(fileCaptureTime)
+				return fmt.Sprintf("%06d", fileIndex), nil
+			}
+		case "IndexByCaptureDate":
+			{
+				fileIndex := collector.GetIndexByDay(fileCaptureTime)
+				return fmt.Sprintf("%06d", fileIndex), nil
+			}
+		case "Extension":
+			{
+				return strings.Replace(filepath.Ext(fileMeta.Name()), ".", "", -1), nil
+			}
+		case "Size":
+			{
+				return strconv.FormatInt(fileMeta.Size(), 10), nil
+			}
+		case "ModTime":
+			{
+				var subProperty string
+				if len(properties) > 1 {
+					subProperty = properties[1]
+				}
+				return TimestampProp(fileMeta.ModTime(), subProperty), nil
+			}
+		case "Name":
+			{
+				return fileMeta.Name(), nil
+			}
+		}
+	}
+
+	return tagValue, nil
+}
+
+// GetExifTagValue gets a tag value from exif metadata.
+func GetExifTagValue(exifData *exif.Exif, tag string, properties ...string) (string, error) {
+	var tagValue string
+	exifTag, err := exifData.Get(exif.FieldName(tag))
 	if err != nil {
 		return tagValue, err
 	}
@@ -249,7 +281,9 @@ func GetExifTagValue(filePath string, tag, property string) (string, error) {
 		if err != nil {
 			return tagValue, err
 		}
-		tagValue = TimestampProp(timestamp, property)
+		if len(properties) > 0 {
+			tagValue = TimestampProp(timestamp, properties[0])
+		}
 	} else {
 		tagValue = stringTagValue
 	}
@@ -257,30 +291,21 @@ func GetExifTagValue(filePath string, tag, property string) (string, error) {
 	return tagValue, nil
 }
 
-// ParseTagProperties returns the tag and relevant property.
-func ParseTagProperties(outputTag string) (tag, parameter string) {
-	if strings.Contains(outputTag, ".") {
-		parts := strings.Split(outputTag, ".")
-		return parts[0], parts[1]
-	}
-	return outputTag, ""
-}
-
 // GetTagValue returns the tag value for a given fileMeta.
-func GetTagValue(fileIndex int, filePath, fileTag string) (string, error) {
+func GetTagValue(indexCollector *lib.DateIndexCollector, fileCaptureTime time.Time, exifData *exif.Exif, filePath, fileTag string) (string, error) {
 	var tagValue string
 	for _, outputTag := range strings.Split(fileTag, "|") {
-		tag, property := ParseTagProperties(outputTag)
+		tag, properties := ParseTagProperties(outputTag)
 		switch tag {
 		case "File":
-			fileTagValue, err := GetFileTagValue(fileIndex, filePath, tag, property)
+			fileTagValue, err := GetFileTagValue(indexCollector, fileCaptureTime, filePath, tag, properties...)
 			if err != nil {
 				continue
 			}
 			tagValue = fileTagValue
 			break
 		default:
-			exifTagValue, err := GetExifTagValue(filePath, tag, property)
+			exifTagValue, err := GetExifTagValue(exifData, tag, properties...)
 			if err != nil {
 				continue
 			}
@@ -291,18 +316,53 @@ func GetTagValue(fileIndex int, filePath, fileTag string) (string, error) {
 	return tagValue, nil
 }
 
-// ReplaceTagInPattern replaces a given tag in a given pattern.
-func ReplaceTagInPattern(inputPattern, tag, value string) string {
-	return strings.Replace(inputPattern, "{"+tag+"}", value, -1)
+// GetFileCaptureTime returns the capture time for a given image file.
+func GetFileCaptureTime(filePath string) (time.Time, *exif.Exif, error) {
+	var timestamp time.Time
+	exifData, err := GetExifData(filePath)
+	if err != nil {
+		return timestamp, exifData, err
+	}
+
+	exifTag, err := exifData.Get(exif.DateTime)
+	if err != nil {
+		exifTag, err = exifData.Get(exif.DateTimeDigitized)
+		if err != nil {
+			exifTag, err = exifData.Get(exif.DateTimeOriginal)
+		}
+	}
+	if err != nil {
+		return timestamp, exifData, err
+	}
+
+	stringTagValue, err := exifTag.StringVal()
+	if err != nil {
+		return timestamp, exifData, err
+	}
+	timestamp, err = time.Parse(timestampFormat, stringTagValue)
+	return timestamp, exifData, err
+}
+
+// IncrementCaptureIndex increments the capture index for a file based on
+// its capture time.
+func IncrementCaptureIndex(filePath string, collector *lib.DateIndexCollector) (time.Time, *exif.Exif, error) {
+	timestamp, exifData, err := GetFileCaptureTime(filePath)
+	if err != nil {
+		return timestamp, exifData, err
+	}
+	collector.Add(timestamp)
+	return timestamp, exifData, nil
 }
 
 // ApplyPattern applies the rename pattern to the files.
 func ApplyPattern(files, fileTags []string, outputFilePattern string) error {
-	var err error
-	for fileIndex, file := range files {
+	var collector = lib.NewDateIndexCollector()
+	for _, file := range files {
+		fileCaptureTime, exifData, err := IncrementCaptureIndex(file, collector)
+
 		outputFilename := outputFilePattern
 		for _, tag := range fileTags {
-			value, err := GetTagValue(fileIndex, file, tag)
+			value, err := GetTagValue(collector, fileCaptureTime, exifData, file, tag)
 			if err != nil {
 				return err
 			}
