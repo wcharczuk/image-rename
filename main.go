@@ -14,7 +14,11 @@ import (
 	"strings"
 
 	"github.com/rwcarlsen/goexif/exif"
-	"github.com/wcharczuk/image-rename-util/lib"
+)
+
+const (
+	// SemVer is the current version.
+	SemVer = "1.0.0"
 )
 
 // defaults
@@ -50,6 +54,10 @@ var (
 const (
 	timestampFormat = `2006:01:02 15:04:05`
 )
+
+// --------------------------------------------------------------------------------
+// Arguments
+// --------------------------------------------------------------------------------
 
 // ArgsWorkDir returns the default working directory.
 func ArgsWorkDir() string {
@@ -96,46 +104,63 @@ func ArgsDryRun() bool {
 	return false
 }
 
+// --------------------------------------------------------------------------------
+// Property Formatters
+// --------------------------------------------------------------------------------
+
 // TimestampProp returns a property of a timestamp.
-func TimestampProp(timestamp time.Time, property string) string {
-	switch property {
-	case "Year":
-		return strconv.Itoa(timestamp.Year())
-	case "Month":
-		return fmt.Sprintf("%02d", int(timestamp.Month()))
-	case "Day":
-		return fmt.Sprintf("%02d", timestamp.Day())
-	case "Hour":
-		return fmt.Sprintf("%02d", timestamp.Hour())
-	case "Minute":
-		return fmt.Sprintf("%02d", timestamp.Minute())
-	case "Second":
-		return fmt.Sprintf("%02d", timestamp.Second())
-	case "Nanosecond":
-		return strconv.Itoa(timestamp.Nanosecond())
-	case "Offset":
-		return timestamp.Location().String()
+func TimestampProp(timestamp time.Time, properties ...string) string {
+	if len(properties) > 0 {
+		switch properties[0] {
+		case "Year":
+			return strconv.Itoa(timestamp.Year())
+		case "Month":
+			return fmt.Sprintf("%02d", int(timestamp.Month()))
+		case "Day":
+			return fmt.Sprintf("%02d", timestamp.Day())
+		case "Hour":
+			return fmt.Sprintf("%02d", timestamp.Hour())
+		case "Minute":
+			return fmt.Sprintf("%02d", timestamp.Minute())
+		case "Second":
+			return fmt.Sprintf("%02d", timestamp.Second())
+		case "Nanosecond":
+			return strconv.Itoa(timestamp.Nanosecond())
+		case "Unix":
+			return strconv.FormatInt(timestamp.Unix(), 10)
+		case "Weekday":
+			return fmt.Sprintf("%v", timestamp.Weekday())
+		case "Offset":
+			return timestamp.Location().String()
+		}
 	}
 	return timestamp.Format(time.RFC3339)
 }
 
 // FileProp returns a file property.
-func FileProp(index int, fileMeta os.FileInfo, property string) string {
-	switch property {
-	case "Index":
-		{
-			return strconv.Itoa(index)
-		}
-	case "Name":
-		{
-			return fileMeta.Name()
-		}
-	case "ModTimeUnix":
-		{
-			return strconv.FormatInt(fileMeta.ModTime().Unix(), 10)
+func FileProp(fileMeta os.FileInfo, properties ...string) string {
+	var value string
+	if len(properties) > 0 {
+		switch properties[0] {
+		case "Name":
+			{
+				value = fileMeta.Name()
+			}
+		case "ModTime":
+			{
+				var subProperty string
+				if len(properties) > 1 {
+					subProperty = properties[1]
+				}
+				return TimestampProp(fileMeta.ModTime(), subProperty)
+			}
+		case "Size":
+			{
+				return strconv.FormatInt(fileMeta.Size(), 10)
+			}
 		}
 	}
-	return property
+	return value
 }
 
 // ExtractFileOutputTags extracts the tags from a file pattern.
@@ -209,7 +234,7 @@ func ReplaceTagInPattern(inputPattern, tag, value string) string {
 }
 
 // GetFileTagValue gets a tag value from file metadata.
-func GetFileTagValue(collector *lib.DateIndexCollector, fileCaptureTime time.Time, filePath, tag string, properties ...string) (string, error) {
+func GetFileTagValue(collector *DateIndexCollector, fileCaptureTime time.Time, filePath, tag string, properties ...string) (string, error) {
 	var tagValue string
 	fileMeta, err := os.Stat(filePath)
 	if err != nil {
@@ -241,21 +266,9 @@ func GetFileTagValue(collector *lib.DateIndexCollector, fileCaptureTime time.Tim
 			{
 				return strings.Replace(filepath.Ext(fileMeta.Name()), ".", "", -1), nil
 			}
-		case "Size":
+		default:
 			{
-				return strconv.FormatInt(fileMeta.Size(), 10), nil
-			}
-		case "ModTime":
-			{
-				var subProperty string
-				if len(properties) > 1 {
-					subProperty = properties[1]
-				}
-				return TimestampProp(fileMeta.ModTime(), subProperty), nil
-			}
-		case "Name":
-			{
-				return fileMeta.Name(), nil
+				return FileProp(fileMeta, properties...), nil
 			}
 		}
 	}
@@ -292,7 +305,7 @@ func GetExifTagValue(exifData *exif.Exif, tag string, properties ...string) (str
 }
 
 // GetTagValue returns the tag value for a given fileMeta.
-func GetTagValue(indexCollector *lib.DateIndexCollector, fileCaptureTime time.Time, exifData *exif.Exif, filePath, fileTag string) (string, error) {
+func GetTagValue(indexCollector *DateIndexCollector, fileCaptureTime time.Time, exifData *exif.Exif, filePath, fileTag string) (string, error) {
 	var tagValue string
 	for _, outputTag := range strings.Split(fileTag, "|") {
 		tag, properties := ParseTagProperties(outputTag)
@@ -345,7 +358,7 @@ func GetFileCaptureTime(filePath string) (time.Time, *exif.Exif, error) {
 
 // IncrementCaptureIndex increments the capture index for a file based on
 // its capture time.
-func IncrementCaptureIndex(filePath string, collector *lib.DateIndexCollector) (time.Time, *exif.Exif, error) {
+func IncrementCaptureIndex(filePath string, collector *DateIndexCollector) (time.Time, *exif.Exif, error) {
 	timestamp, exifData, err := GetFileCaptureTime(filePath)
 	if err != nil {
 		return timestamp, exifData, err
@@ -356,7 +369,7 @@ func IncrementCaptureIndex(filePath string, collector *lib.DateIndexCollector) (
 
 // ApplyPattern applies the rename pattern to the files.
 func ApplyPattern(files, fileTags []string, outputFilePattern string) error {
-	var collector = lib.NewDateIndexCollector()
+	var collector = NewDateIndexCollector()
 	for _, file := range files {
 		fileCaptureTime, exifData, err := IncrementCaptureIndex(file, collector)
 

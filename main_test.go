@@ -11,11 +11,13 @@ func TestExtractFileTags(t *testing.T) {
 	assert := assert.New(t)
 
 	tags := ExtractFileOutputTags(DefaultFileOutputPattern)
-	assert.Len(tags, 4, fmt.Sprintf("%#v", tags))
+	assert.Len(tags, 6, fmt.Sprintf("%#v", tags))
 	assert.Equal("DateTime.Year", tags[0])
 	assert.Equal("DateTime.Month", tags[1])
 	assert.Equal("DateTime.Day", tags[2])
-	assert.Equal("ImageUniqueID", tags[3])
+	assert.Equal("Make", tags[3])
+	assert.Equal("File.IndexByCaptureDate", tags[4])
+	assert.Equal("File.Extension", tags[5])
 }
 
 func TestReplaceTagInPattern(t *testing.T) {
