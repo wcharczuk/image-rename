@@ -14,7 +14,7 @@ import (
 	"strings"
 
 	"github.com/rwcarlsen/goexif/exif"
-	"github.com/wcharczuk/image-util/lib"
+	"github.com/wcharczuk/image-rename-util/lib"
 )
 
 // defaults
