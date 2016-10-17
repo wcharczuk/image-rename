@@ -337,11 +337,11 @@ func GetFileCaptureTime(filePath string) (time.Time, *exif.Exif, error) {
 		return timestamp, exifData, err
 	}
 
-	exifTag, err := exifData.Get(exif.DateTime)
+	exifTag, err := exifData.Get(exif.DateTimeDigitized)
 	if err != nil {
-		exifTag, err = exifData.Get(exif.DateTimeDigitized)
+		exifTag, err = exifData.Get(exif.DateTimeOriginal)
 		if err != nil {
-			exifTag, err = exifData.Get(exif.DateTimeOriginal)
+			exifTag, err = exifData.Get(exif.DateTime)
 		}
 	}
 	if err != nil {
