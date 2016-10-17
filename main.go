@@ -39,7 +39,7 @@ var (
 	flagInputFileFilter   = flag.String("filter", DefaultFileInputFilter, "The input file filter.")
 	flagOutputFilePattern = flag.String("output", DefaultFileOutputPattern, "The file output pattern.")
 	flagRecursive         = flag.Bool("recursive", false, "The filesystem visitor should recurse to sub directories.")
-	flagDryRun            = flag.Bool("dryrun", true, "The print the output, do not rename/move the files.")
+	flagDryRun            = flag.Bool("dryrun", false, "The print the output, do not rename/move the files.")
 )
 
 // fieldTypes
