@@ -30,7 +30,7 @@ const (
 	DefaultFileInputFilter = ".jpg"
 
 	// DefaultFileOutputPattern is the default output pattern for the file.`
-	DefaultFileOutputPattern = "{DateTime.Year}{DateTime.Month}{DateTime.Day}_{Make}_{File.IndexByCaptureDate}.{File.Extension}"
+	DefaultFileOutputPattern = "{DateTimeDigitized.Year}{DateTimeDigitized.Month}{DateTimeDigitized.Day}_{Make}_{File.IndexByCaptureDate}.{File.Extension}"
 )
 
 // flags

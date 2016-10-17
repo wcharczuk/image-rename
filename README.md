@@ -1,5 +1,5 @@
-# image-rename-util
-`image-rename-util` is a customizable  image renamer that uses image exif data to form the names.
+# image-rename
+`image-rename` is a customizable image renamer that uses image exif data to form the names.
 
 ## Installation 
 
@@ -10,7 +10,7 @@ Either download a pre-built binary for your platform or install it with `go get`
 To use the utility, first test it out in a directory of your choosing: 
 
 ```
-> image-rename-util --dryrun=true
+> image-rename --dryrun=true
 ```
 
 ## Output Format
@@ -19,9 +19,9 @@ You can optionally, but it is very recommended, provide a tokenized output forma
 
 The default output format is as follows:
 
-```{DateTime.Year}{DateTime.Month}{DateTime.Day}_{Make}_{File.IndexByCaptureDate}.{File.Extension}```
+```{DateTimeDigitized.Year}{DateTimeDigitized.Month}{DateTimeDigitized.Day}_{Make}_{File.IndexByCaptureDate}.{File.Extension}```
 
-Notice a couple things; 1) we can specify individual components of a given `DateTime` field with the `DateTime.Year` notation as an example. 2) We can use a special "File" tag to access additional information outside what is provided by Exif. In the above case we're using the index as bucketed by capture date.
+Notice a couple things; 1) we can specify individual components of a given date time field (in this example, `DateTimeDigitized`) with the `DateTimeDigitized.Year` property notation. 2) We can use a special "File" tag to access additional information outside what is provided by Exif. In the above case we're using the index as bucketed by capture date.
 
 In addition to the standard exif fields provided by [goexif](http://github.com/rwcarlsen/goexif/exif) there are a couple custom ones you can use:
 
